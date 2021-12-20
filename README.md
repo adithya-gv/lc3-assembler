@@ -16,5 +16,6 @@ specified by the LC-3 ISA.
 This is a two-pass assembler. Currently, the assembler performs part of the first pass:
 1. it tokenizes each of the lines, flagging any syntax errors if tokens are invalid
 2. it sets the value of the Program Counter based on the .orig directive
+
 The current output file stores the tokenized assembly, removing any directives.
 More details coming soon
