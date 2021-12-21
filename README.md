@@ -15,10 +15,11 @@ specified by the LC-3 ISA.
 The ISA will be posted here shortly.
 
 ## Details 
-This is a two-pass assembler. Currently, the assembler performs part of the first pass:
-1. it tokenizes each of the lines, flagging any syntax errors if tokens are invalid
+This is a two-pass assembler. Currently, the assembler performs most of the first pass:
+1. it tokenizes each of the lines, flagging any syntax errors if tokens are invalid.
 2. it sets the value of the Program Counter based on the .orig directive
+3. It stores all labels into a lookup table by address. 
 
-The current output file stores the tokenized assembly, removing any directives.
+The current output file stores the tokenized assembly, removing any .orig and .end directives.
 
-More details coming soon
+More details coming soon.
