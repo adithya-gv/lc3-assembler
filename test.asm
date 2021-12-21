@@ -1,7 +1,5 @@
 .orig x3000
 
-;;put your code here
-
 ; Load the argument A into Register 0 as the value to be added.
 LD R0, A 
 
@@ -27,7 +25,6 @@ LOOP    ADD R2, R2, R0 ; R2 = R2 + R0
 ST R2, ANSWER
 
 HALT
-
 
 A .fill 9
 
