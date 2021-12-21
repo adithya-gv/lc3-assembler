@@ -3,11 +3,17 @@ use std::fs;
 
 /*
 next features:
-1. comments
-2. labels
+1. labels
 */
 
 static DIRECTIVES: [&str; 2] = ["orig", "end"];
+const NORMAL: u32 = 0;
+const ORIG: u32 = 1;
+const PC: u32 = 2;
+const EOL: u32 = 3;
+
+const PARSING: u32 = 0;
+const COMMENT: u32 = 1;
 
 fn throw_error(pc: u32, cause: &str, i: i32) {
     println!("Exception: Illegal Instruction at address {:#0x}: {}. Type {}", pc, cause, i);
@@ -23,16 +29,31 @@ fn main() {
 
     let mut start = 0;
     let mut end = 0;
-    let mut v: Vec<String> = vec![];
+    let mut tokens: Vec<String> = vec![];
     let mut eol = false;
     let mut out = String::new();
     let mut pc: u32 = 0x0;
+    let mut parse_mode = PARSING;
     for c in code.chars() {
+        if parse_mode == COMMENT {
+            if c == '\n' {
+                parse_mode = PARSING;
+                start = end + 1;
+                eol = true;
+            }
+            end = end + 1;
+            continue;
+        }
+        if c == ';' {
+            parse_mode = COMMENT;
+            end = end + 1;
+            continue;
+        }
         if c == ' ' || c == '\n' {
             if end - start <= 0 {
                 start = end + 1;
             } else {
-                v.push(code[start..end].to_string());
+                tokens.push(code[start..end].to_string());
                 start = end + 1;
             }
         }
@@ -41,99 +62,99 @@ fn main() {
             eol = true;
         }
         if end == code.len() {
-            if c != ' ' {
-                v.push(code[start..end].to_string());
+            if c != ' ' && parse_mode == PARSING {
+                tokens.push(code[start..end].to_string());
             }
             eol = true;
         }
         if eol {
-            let mut lexed: Vec<String> = vec![];
-            let mut i = 0;
-            let mut dir = 0;
-            while i < v.len() {
-                let j = v[i].len() - 1;
-                let mut k = 0;
+            let mut lexed_tokens: Vec<String> = vec![];
+            let mut token_num = 0;
+            let mut dir_mode = NORMAL;
+            while token_num < tokens.len() {
+                let bound = tokens[token_num].len() - 1;
+                let mut token_index = 0;
                 let mut start = 0;
-                for c in v[i].chars() {
-                    if dir == 3 {
-                        throw_error(pc, &v[i], 0);
+                for c in tokens[token_num].chars() {
+                    if dir_mode == EOL {
+                        throw_error(pc, &tokens[token_num], 0);
                     }
-                    if c == '.' && k == 0 {
-                        dir = 1;
-                        start = k + 1;
+                    if c == '.' && token_index == 0 {
+                        dir_mode = ORIG;
+                        start = token_index + 1;
                     }
-                    if dir == 0 {
-                        if c == ',' && (k != j || i == v.len() - 1 || i == 0)  {
-                            throw_error(pc, &v[i], 1);
+                    if dir_mode == NORMAL {
+                        if c == ',' && (token_index != bound || token_num == tokens.len() - 1 || token_num == 0)  {
+                            throw_error(pc, &tokens[token_num], 1);
                         }
-                        if c != ',' && k == j && i != v.len() - 1 && i != 0 {
-                            throw_error(pc, &v[i], 2);
+                        if c != ',' && token_index == bound && token_num != tokens.len() - 1 && token_num != 0 {
+                            throw_error(pc, &tokens[token_num], 2);
                         }
-                    } else if dir == 1 {
+                    } else if dir_mode == ORIG {
                         if c == ','  {
-                            throw_error(pc, &v[i], 3);
+                            throw_error(pc, &tokens[token_num], 3);
                         }
-                        if k == j {
+                        if token_index == bound {
                             let mut direct = String::new();
-                            direct.push_str(&v[i][start..k + 1]);
+                            direct.push_str(&tokens[token_num][start..token_index + 1]);
                             let mut found = false;
                             for d in DIRECTIVES {
                                 if d.eq(&direct) {
                                     found = true;
                                     if d.eq("orig") {
-                                        dir = 2;
+                                        dir_mode = PC;
                                         pc = 0x0;
                                     } else if d.eq("end") {
-                                        dir = 3;
+                                        dir_mode = EOL;
                                     }
                                     break;
                                 }
                             }
                             if !found {
-                                throw_error(pc, &v[i], 4);
+                                throw_error(pc, &tokens[token_num], 4);
                             }
                         }
-                    } else if dir == 2 {
+                    } else if dir_mode == PC {
                         if c == 'x' {
                             continue;
                         } else if !(c >= '0' && c <= '9') {
-                            throw_error(pc, &v[i], 5);
+                            throw_error(pc, &tokens[token_num], 5);
                         } else {
-                            let dig = c.to_digit(10);
+                            let digit = c.to_digit(10);
                             let mut val = 0;
-                            if dig == None {
-                                throw_error(pc, &v[i], 6);
+                            if digit == None {
+                                throw_error(pc, &tokens[token_num], 6);
                             } else {
-                                val = dig.unwrap();
+                                val = digit.unwrap();
                             }
                             pc = pc * 16 + val;
                         }
                     }
-                    k = k + 1;
-                    if k == j + 1 && dir == 0 {
+                    token_index = token_index + 1;
+                    if token_index == bound + 1 && dir_mode == NORMAL {
                         if c == ',' {
-                            lexed.push(v[i][0..v[i].len() - 1].to_string());
+                            lexed_tokens.push(tokens[token_num][0..tokens[token_num].len() - 1].to_string());
                         } else {
-                            lexed.push(v[i][0..v[i].len()].to_string());
+                            lexed_tokens.push(tokens[token_num][0..tokens[token_num].len()].to_string());
                         }
                     }
                 }
-                i = i + 1;
+                token_num = token_num + 1;
             }
-            i = 0;
+            token_num = 0;
             let mut wrote = false;
-            for l in lexed {
-                if i != 0 {
+            for l in lexed_tokens {
+                if token_num != 0 {
                     out.push_str(" ");
                 }
                 out.push_str(&l);
                 wrote = true;
-                i = i + 1;
+                token_num = token_num + 1;
             }
             if wrote {
                 out.push_str("\n");
             }
-            v.clear();
+            tokens.clear();
             pc = pc + 1;
             eol = false;
         }
