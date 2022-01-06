@@ -14,6 +14,9 @@ next features:
 static DIRECTIVES: [&str; 3] = ["orig", "end", "fill"];
 static ISA: [&str; 23] = ["ADD", "AND", "NOT", "BR", "BRp", "BRn", "BRz", "BRnz", "BRnp", "BRzp", "BRnzp", "JMP", 
     "JSR", "JSRR", "LD", "LDI", "LDR", "LEA", "ST", "STI", "STR", "TRAP", "RET"];
+static BINARY: [&str; 23] = ["0001", "0101", "1001", "0000000", "0000001", "0000100", "0000010", "0000110", "0000101", "0000011", 
+    "0000111", "1100", "01001", "01000", "0010", "1010", "0110", "1110", "0011", "1011", "0111", "1111", "1100"];
+static ERROR: &str = "XXXX";
 
 // Lexer Modes
 const LEXING: u32 = 0;
@@ -31,8 +34,125 @@ const DIR: u32 = 6;
 // Throws an error, specifying the address and the token at which the error occured. 
 // The number is i is for debugging purposes
 fn throw_error(pc: u32, cause: &str, i: i32) {
-    println!("Error: Illegal Instruction at address {:#0x}: {}. Type {}", pc - 1, cause, i);
+    println!("Error: Illegal Instruction at address {:#0x}: {}. Type {}.", pc - 1, cause, i);
     std::process::exit(1);
+}
+
+fn translate_error(cause: &str, i: i32) {
+    println!("Error: Malformed Instruction: {}. Type {}.", cause, i);
+    std::process::exit(1);
+}
+
+fn file_error() {
+    println!("Error: Invalid file format. File must be of type .asm.");
+    std::process::exit(1);
+}
+
+fn parse_file_name(s: &str) {
+    const FILE: [char; 3] = ['a', 's', 'm'];
+    let mut extension = false;
+    let mut i = 0;
+    for c in s.chars() {
+        if extension {
+            if i > 2 {
+                file_error();
+            }
+            if c != FILE[i] {
+                file_error();
+            }
+            i = i + 1;
+        } else if c == '.' {
+            extension = true;
+        }
+    }
+    if !extension {
+        file_error();
+    }
+}
+
+fn translate(s: &String) -> usize {
+    let mut i = 0;
+    while i < 23 {
+        if ISA[i] == s {
+            return i;
+        }
+        i = i + 1;
+    }
+    return 24;
+}
+
+fn two_comp(j: u32, toggle: i32) -> String {
+    return ERROR.to_string();
+    // finish this.
+}
+
+fn handle_arithmetic(s: &String, instruction: u32) -> String {
+    let mut out = String::new();
+    let mut j = 0;
+    let mut toggle = 1;
+    if instruction == 0 || instruction == 1 {
+        let mut i = 0;
+        for c in s.chars() {
+            if i > 1 {
+                translate_error(&s, 1);
+                return ERROR.to_string();
+            }
+            if i == 0 && c != 'R' {
+                translate_error(&s, 0);
+                return ERROR.to_string();
+            } else if i == 1 {
+                let digit = c.to_digit(10);
+                if digit == None {
+                    translate_error(&s, 0);
+                } else {
+                    out.push(c);
+                }
+            }
+            i = i + 1
+        }
+    } else if instruction == 2 {
+        let mut i = 0;
+        let mut mode = 0;
+        for c in s.chars() {
+            if i == 0 {
+                if c == '#' {
+                    out.push_str("1");
+                    mode = 1;
+                } else if c == 'R' {
+                    out.push_str("000");
+                    mode = 2;
+                } else {
+                    translate_error(&s, 2);
+                    return ERROR.to_string();
+                }
+            } else {
+                if c == '-' {
+                    toggle = -1;
+                } else if mode == 1 {
+                    let digit = c.to_digit(10);
+                    if digit == None {
+                        translate_error(&s, 3);
+                    } else {
+                        j = j * 10 + digit.unwrap();
+                    }
+                } else if mode == 2 {
+                    let digit = c.to_digit(10);
+                    if digit == None {
+                        translate_error(&s, 4);
+                    } else {
+                        out.push(c);
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+    if (j > 31 && toggle == 1) || (j > 32 && toggle == -1) {
+        translate_error(&s, 5);
+    } else {
+        // TODO: Finish 2's comp translation.
+    }
+    return out;
 }
 
 // Assembler
@@ -44,6 +164,7 @@ fn main() {
     // Read code from ASM file.
     let args: Vec<String> = env::args().collect();
     let file = &args[1];
+    parse_file_name(&file);
     let code = fs::read_to_string(file)
         .expect("Critical Error: Unable to read the file.");
 
@@ -53,7 +174,8 @@ fn main() {
     let mut tokens: Vec<String> = vec![];
     let mut eol = false;
 
-    // Initialize Output String
+    // Initialize Output Variables
+    let mut formatted_tokens: Vec<String> = vec![];
     let mut out = String::new();
 
     // Initialize Program Counter
@@ -266,24 +388,12 @@ fn main() {
                 token_num = token_num + 1;
             }
             // We're done parsing the line.
-            // Setup variables for final finishes. 
-            token_num = 0;
-            let mut wrote = false;
 
             // Add each parsed token to the string.
             for l in parsed_tokens {
-                if token_num != 0 {
-                    out.push_str(" ");
-                }
-                out.push_str(&l);
-                wrote = true;
-                token_num = token_num + 1;
+                formatted_tokens.push(l.to_string());
             }
-            // If we actually wrote to the string, append a new line. 
-            if wrote {
-                out.push_str("\n");
-            }
-            // If there were tokens to parse, incremenet PC by 1, else this was just an empty line. 
+            // If there were tokens to parse, increment PC by 1, else this was just an empty line. 
             if tokens.len() > 0 {
                 pc = pc + 1;
             }
@@ -292,9 +402,25 @@ fn main() {
             eol = false;
         }
     }
+    let mut prev_res = 0;
+    let mut instruction: u32 = 0;
+    for token in formatted_tokens {
+        let result = translate(&token);
+        if result == 24 {
+            if prev_res == 0 || prev_res == 1 {
+                handle_arithmetic(&token, instruction);
+            }
+            instruction = instruction + 1;
+        } else {
+            out.push_str(&BINARY[result]);
+            prev_res = result;
+            instruction = 0;
+        }
+    }
 
     // Once we've parsed the entire code string, write the output string to the file. 
     fs::write("output.txt", out)
         .expect("Critical Error: Cannot produce machine code output file.");
+    
     
 }
