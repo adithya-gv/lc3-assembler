@@ -4,13 +4,13 @@ use std::collections::HashMap;
 
 /*
 next features:
-1. Make sure file ending is .asm.
-2. Trap Vector Table.
-3. Remove directives from output.
-4. Translation.
+1. Trap Vector Table.
+2. Remove directives from output.
 */
 
 // Directives and ISA Instructions
+
+// TODO: Turn into enum.
 static DIRECTIVES: [&str; 3] = ["orig", "end", "fill"];
 static ISA: [&str; 23] = ["ADD", "AND", "NOT", "BR", "BRp", "BRn", "BRz", "BRnz", "BRnp", "BRzp", "BRnzp", "JMP", 
     "JSR", "JSRR", "LD", "LDI", "LDR", "LEA", "ST", "STI", "STR", "TRAP", "RET"];
@@ -81,15 +81,52 @@ fn translate(s: &String) -> usize {
     return 24;
 }
 
-fn two_comp(j: u32, toggle: i32) -> String {
-    return ERROR.to_string();
-    // finish this.
+fn two_comp_imm5(j: u32, toggle: i32) -> String {
+    let mut k = j;
+    let mut out = String::new();
+    let mut dig = 0;
+    while k > 0 {
+        if k % 2 == 0 {
+            out.push_str("0");
+        } else {
+            out.push_str("1");
+        }
+        k = k / 2;
+        dig = dig + 1;
+    }
+    while dig < 5 {
+        if toggle == -1 {
+            out.push_str("1");
+        } else {
+            out.push_str("0");
+        }
+        dig = dig + 1;
+    }
+    return out[0..5].chars().rev().collect::<String>().to_string();
+}
+
+fn register_format(j: u32) -> String {
+    let mut k = j;
+    let mut out = String::new();
+    let mut dig_count = 0;
+    while k > 0 {
+        if k % 2 == 0 {
+            out.push_str("0");
+        } else {
+            out.push_str("1");
+        }
+        k = k / 2;
+        dig_count = dig_count + 1;
+    }
+    while dig_count < 3 {
+        out.push_str("0");
+        dig_count = dig_count + 1;
+    }
+    return out.chars().rev().collect::<String>();
 }
 
 fn handle_arithmetic(s: &String, instruction: u32) -> String {
     let mut out = String::new();
-    let mut j = 0;
-    let mut toggle = 1;
     if instruction == 0 || instruction == 1 {
         let mut i = 0;
         for c in s.chars() {
@@ -105,12 +142,14 @@ fn handle_arithmetic(s: &String, instruction: u32) -> String {
                 if digit == None {
                     translate_error(&s, 0);
                 } else {
-                    out.push(c);
+                    out.push_str(&register_format(digit.unwrap()));
                 }
             }
             i = i + 1
         }
     } else if instruction == 2 {
+        let mut j = 0;
+        let mut toggle = 1;
         let mut i = 0;
         let mut mode = 0;
         for c in s.chars() {
@@ -140,18 +179,52 @@ fn handle_arithmetic(s: &String, instruction: u32) -> String {
                     if digit == None {
                         translate_error(&s, 4);
                     } else {
-                        out.push(c);
+                        out.push_str(&register_format(digit.unwrap()));
                     }
                 }
             }
             i = i + 1;
         }
+        if mode == 1 {
+            if (j > 15 && toggle == 1) || (j > 16 && toggle == -1) {
+                translate_error(&s, 5);
+            } else {
+                out.push_str(&two_comp_imm5(j, toggle));
+            }
+        }
     }
-    if (j > 31 && toggle == 1) || (j > 32 && toggle == -1) {
-        translate_error(&s, 5);
-    } else {
-        // TODO: Finish 2's comp translation.
+    return out;
+}
+
+fn handle_not(s: &String, instruction: u32) -> String {
+    let mut out = String::new();
+    let mut i = 0;
+    for c in s.chars() {
+        if i > 1 {
+            translate_error(&s, 1);
+            return ERROR.to_string();
+        }
+        if i == 0 && c != 'R' {
+            translate_error(&s, 0);
+            return ERROR.to_string();
+        } else if i == 1 {
+            let digit = c.to_digit(10);
+            if digit == None {
+                translate_error(&s, 0);
+            } else {
+                out.push_str(&register_format(digit.unwrap()));
+            }
+        }
+        i = i + 1
     }
+    if instruction == 1 {
+        out.push_str("111111");
+    }
+    return out;
+}
+
+fn handle_branch(diff: u32) -> String {
+    let mut out = String::new();
     return out;
 }
 
@@ -160,6 +233,7 @@ fn main() {
 
     // Setup Lablers Lookup Table
     let mut labels: HashMap<String, u32> = HashMap::new();
+    let mut orig: Vec<u32> = Vec::new();
 
     // Read code from ASM file.
     let args: Vec<String> = env::args().collect();
@@ -349,6 +423,7 @@ fn main() {
                             }
                             // increment PC. 
                             pc = pc * 16 + val;
+                            orig.push(pc);
                         }
                     }
                     // We're parsing a fill directive in some way.  
@@ -402,19 +477,29 @@ fn main() {
             eol = false;
         }
     }
+    
     let mut prev_res = 0;
     let mut instruction: u32 = 0;
+    let mut index = 0;
+    // Reinitialize PC
+    pc = *orig.get(index).unwrap();
+    index = index + 1;
     for token in formatted_tokens {
         let result = translate(&token);
         if result == 24 {
             if prev_res == 0 || prev_res == 1 {
-                handle_arithmetic(&token, instruction);
+                out.push_str(&handle_arithmetic(&token, instruction));
+            } else if prev_res == 2 {
+                out.push_str(&handle_not(&token, instruction));
+            } else if prev_res >= 3 && prev_res <= 10 {
+                out.push_str(&handle_branch(0));
             }
             instruction = instruction + 1;
         } else {
             out.push_str(&BINARY[result]);
             prev_res = result;
             instruction = 0;
+            pc = pc + 1;
         }
     }
 
